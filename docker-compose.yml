@@ -1,0 +1,61 @@
+# Local stand-ins for the AWS architecture:
+#   localstack -> Amazon DynamoDB (urls table, TTL on expires_at)
+#   redis      -> Amazon ElastiCache (global counter for short codes + redirect cache)
+#
+# Host ports are offset (4567, 6380) so this can run next to other local stacks.
+#
+#   docker compose up -d                   # infra only; run backend/frontend from your IDE or scripts/local.sh
+#   docker compose --profile app up -d     # everything in containers
+services:
+  localstack:
+    # 4.14 is the last community image that runs without an account.
+    image: ${LOCALSTACK_IMAGE:-localstack/localstack:4.14}
+    environment:
+      SERVICES: dynamodb
+      AWS_DEFAULT_REGION: us-east-1
+      LOCALSTACK_AUTH_TOKEN: ${LOCALSTACK_AUTH_TOKEN:-}
+    ports: ["4567:4566"]
+    volumes:
+      - ./localstack/init/ready.d:/etc/localstack/init/ready.d:ro
+    healthcheck:
+      test: ["CMD-SHELL", "awslocal dynamodb describe-table --table-name bitly-urls >/dev/null"]
+      interval: 5s
+      retries: 20
+
+  redis:
+    image: redis:7-alpine
+    # AOF persistence: losing the counter would re-issue codes (the conditional write would
+    # catch it, but every create would then need retries).
+    command: ["redis-server", "--appendonly", "yes"]
+    ports: ["6380:6379"]
+    volumes:
+      - redis-data:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      retries: 10
+
+  backend:
+    profiles: [app]
+    build: ./backend
+    environment:
+      AWS_ENDPOINT: http://localstack:4566
+      REDIS_HOST: redis
+      REDIS_PORT: 6379
+      BASE_URL: http://localhost:8090
+    ports: ["8090:8090"]
+    depends_on:
+      localstack: { condition: service_healthy }
+      redis: { condition: service_healthy }
+
+  frontend:
+    profiles: [app]
+    build:
+      context: ./frontend
+      args:
+        BACKEND_URL: http://backend:8090
+    ports: ["3001:3000"]
+    depends_on: [backend]
+
+volumes:
+  redis-data:

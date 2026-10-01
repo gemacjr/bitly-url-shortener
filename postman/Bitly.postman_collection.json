@@ -1,0 +1,871 @@
+{
+  "info": {
+    "name": "Bitly URL Shortener",
+    "description": "API tests for the hellointerview Bitly design: POST /urls, GET /{short_code} (302), custom aliases, expiration (410) and validation. Run: npx newman run postman/Bitly.postman_collection.json -e postman/Bitly-Local.postman_environment.json",
+    "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
+  },
+  "item": [
+    {
+      "name": "1. Write path (POST /urls)",
+      "item": [
+        {
+          "name": "Health check",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/actuator/health",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "actuator",
+                "health"
+              ]
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"backend is UP\", () => {",
+                  "    pm.response.to.have.status(200);",
+                  "    pm.expect(pm.response.json().status).to.eql(\"UP\");",
+                  "});"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Create short URL (generated code)",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/urls",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "urls"
+              ]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"long_url\": \"https://www.example.com/some/very/long/url?utm_source=postman\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"status is 201 Created\", () => pm.response.to.have.status(201));",
+                  "const body = pm.response.json();",
+                  "pm.test(\"short_code is 7 base62 chars\", () => pm.expect(body.short_code).to.match(/^[0-9a-zA-Z]{7}$/));",
+                  "pm.test(\"short_url is base_url + code\", () => pm.expect(body.short_url).to.eql(pm.environment.get(\"shortBaseUrl\") + \"/\" + body.short_code));",
+                  "pm.test(\"echoes long_url, never expires\", () => {",
+                  "    pm.expect(body.long_url).to.eql(\"https://www.example.com/some/very/long/url?utm_source=postman\");",
+                  "    pm.expect(body.expiration_date).to.be.null;",
+                  "    pm.expect(body.custom_alias).to.be.false;",
+                  "});",
+                  "pm.test(\"Location header points at metadata\", () => pm.expect(pm.response.headers.get(\"Location\")).to.eql(\"/urls/\" + body.short_code));",
+                  "pm.collectionVariables.set(\"shortCode\", body.short_code);"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Create another -> different code",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/urls",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "urls"
+              ]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"long_url\": \"https://www.example.com/some/very/long/url?utm_source=postman\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"status is 201\", () => pm.response.to.have.status(201));",
+                  "pm.test(\"same long URL still gets a new, unique code\", () =>",
+                  "    pm.expect(pm.response.json().short_code).to.not.eql(pm.collectionVariables.get(\"shortCode\")));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Create with custom alias",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/urls",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "urls"
+              ]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"long_url\": \"https://www.hellointerview.com/learn/system-design/problem-breakdowns/bitly\",\n  \"custom_alias\": \"{{alias}}\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "event": [
+            {
+              "listen": "prerequest",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.collectionVariables.set(\"alias\", \"pm-\" + Date.now().toString(36));"
+                ]
+              }
+            },
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"status is 201\", () => pm.response.to.have.status(201));",
+                  "pm.test(\"short_code is the alias\", () => {",
+                  "    pm.expect(pm.response.json().short_code).to.eql(pm.collectionVariables.get(\"alias\"));",
+                  "    pm.expect(pm.response.json().custom_alias).to.be.true;",
+                  "});"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Custom alias already taken -> 409",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/urls",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "urls"
+              ]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"long_url\": \"https://example.org\",\n  \"custom_alias\": \"{{alias}}\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"status is 409\", () => pm.response.to.have.status(409));",
+                  "pm.test(\"body is an RFC 9457 ProblemDetail\", () => {",
+                  "    pm.expect(pm.response.headers.get(\"Content-Type\")).to.include(\"application/problem+json\");",
+                  "    pm.expect(pm.response.json().status).to.eql(409);",
+                  "    pm.expect(pm.response.json().detail).to.include(\"already taken\");",
+                  "});"
+                ]
+              }
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "2. Read path (GET /{short_code})",
+      "item": [
+        {
+          "name": "Redirect generated code -> 302",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/{{shortCode}}",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "{{shortCode}}"
+              ]
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"302 Found (not 301, so browsers do not cache it)\", () => pm.response.to.have.status(302));",
+                  "pm.test(\"Location is the long URL\", () =>",
+                  "    pm.expect(pm.response.headers.get(\"Location\")).to.eql(\"https://www.example.com/some/very/long/url?utm_source=postman\"));",
+                  "pm.test(\"Cache-Control: no-store\", () => pm.expect(pm.response.headers.get(\"Cache-Control\")).to.eql(\"no-store\"));",
+                  "pm.test(\"redirect is fast (< 100ms target)\", () => pm.expect(pm.response.responseTime).to.be.below(500));"
+                ]
+              }
+            }
+          ],
+          "protocolProfileBehavior": {
+            "followRedirects": false
+          }
+        },
+        {
+          "name": "Redirect again (served from Redis cache)",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/{{shortCode}}",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "{{shortCode}}"
+              ]
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"still 302\", () => pm.response.to.have.status(302));",
+                  "pm.test(\"cached redirect is fast\", () => pm.expect(pm.response.responseTime).to.be.below(100));"
+                ]
+              }
+            }
+          ],
+          "protocolProfileBehavior": {
+            "followRedirects": false
+          }
+        },
+        {
+          "name": "Redirect custom alias -> 302",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/{{alias}}",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "{{alias}}"
+              ]
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"302 to the aliased URL\", () => {",
+                  "    pm.response.to.have.status(302);",
+                  "    pm.expect(pm.response.headers.get(\"Location\")).to.eql(\"https://www.hellointerview.com/learn/system-design/problem-breakdowns/bitly\");",
+                  "});"
+                ]
+              }
+            }
+          ],
+          "protocolProfileBehavior": {
+            "followRedirects": false
+          }
+        },
+        {
+          "name": "Get link metadata",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/urls/{{shortCode}}",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "urls",
+                "{{shortCode}}"
+              ]
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"status is 200\", () => pm.response.to.have.status(200));",
+                  "const body = pm.response.json();",
+                  "pm.test(\"has the full snake_case shape\", () => pm.expect(body).to.have.all.keys(",
+                  "    \"short_url\", \"short_code\", \"long_url\", \"custom_alias\", \"created_at\", \"expiration_date\", \"expired\"));",
+                  "pm.test(\"not expired\", () => pm.expect(body.expired).to.be.false);"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Unknown code -> 404",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/doesNotExist",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "doesNotExist"
+              ]
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"status is 404\", () => pm.response.to.have.status(404));",
+                  "pm.test(\"body is an RFC 9457 ProblemDetail\", () => {",
+                  "    pm.expect(pm.response.headers.get(\"Content-Type\")).to.include(\"application/problem+json\");",
+                  "    pm.expect(pm.response.json().status).to.eql(404);",
+                  "    pm.expect(pm.response.json().detail).to.include(\"not found\");",
+                  "});"
+                ]
+              }
+            }
+          ],
+          "protocolProfileBehavior": {
+            "followRedirects": false
+          }
+        }
+      ]
+    },
+    {
+      "name": "3. Validation",
+      "item": [
+        {
+          "name": "Missing long_url -> 400",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/urls",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "urls"
+              ]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"status is 400\", () => pm.response.to.have.status(400));",
+                  "pm.test(\"body is an RFC 9457 ProblemDetail\", () => {",
+                  "    pm.expect(pm.response.headers.get(\"Content-Type\")).to.include(\"application/problem+json\");",
+                  "    pm.expect(pm.response.json().status).to.eql(400);",
+                  "    pm.expect(pm.response.json().detail).to.include(\"longUrl\");",
+                  "});"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Not an http(s) URL -> 400",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/urls",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "urls"
+              ]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"long_url\": \"ftp://example.com/file\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"status is 400\", () => pm.response.to.have.status(400));",
+                  "pm.test(\"body is an RFC 9457 ProblemDetail\", () => {",
+                  "    pm.expect(pm.response.headers.get(\"Content-Type\")).to.include(\"application/problem+json\");",
+                  "    pm.expect(pm.response.json().status).to.eql(400);",
+                  "    pm.expect(pm.response.json().detail).to.include(\"http\");",
+                  "});"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Invalid alias characters -> 400",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/urls",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "urls"
+              ]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"long_url\": \"https://example.com\",\n  \"custom_alias\": \"no spaces!\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"status is 400\", () => pm.response.to.have.status(400));",
+                  "pm.test(\"body is an RFC 9457 ProblemDetail\", () => {",
+                  "    pm.expect(pm.response.headers.get(\"Content-Type\")).to.include(\"application/problem+json\");",
+                  "    pm.expect(pm.response.json().status).to.eql(400);",
+                  "    pm.expect(pm.response.json().detail).to.include(\"custom_alias\");",
+                  "});"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Reserved alias -> 400",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/urls",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "urls"
+              ]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"long_url\": \"https://example.com\",\n  \"custom_alias\": \"urls\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"status is 400\", () => pm.response.to.have.status(400));",
+                  "pm.test(\"body is an RFC 9457 ProblemDetail\", () => {",
+                  "    pm.expect(pm.response.headers.get(\"Content-Type\")).to.include(\"application/problem+json\");",
+                  "    pm.expect(pm.response.json().status).to.eql(400);",
+                  "    pm.expect(pm.response.json().detail).to.include(\"reserved\");",
+                  "});"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Expiration in the past -> 400",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/urls",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "urls"
+              ]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"long_url\": \"https://example.com\",\n  \"expiration_date\": \"2000-01-01T00:00:00Z\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"status is 400\", () => pm.response.to.have.status(400));",
+                  "pm.test(\"body is an RFC 9457 ProblemDetail\", () => {",
+                  "    pm.expect(pm.response.headers.get(\"Content-Type\")).to.include(\"application/problem+json\");",
+                  "    pm.expect(pm.response.json().status).to.eql(400);",
+                  "    pm.expect(pm.response.json().detail).to.include(\"future\");",
+                  "});"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Shortening our own short link -> 400",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/urls",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "urls"
+              ]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"long_url\": \"{{shortBaseUrl}}/abc1234\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"status is 400\", () => pm.response.to.have.status(400));",
+                  "pm.test(\"body is an RFC 9457 ProblemDetail\", () => {",
+                  "    pm.expect(pm.response.headers.get(\"Content-Type\")).to.include(\"application/problem+json\");",
+                  "    pm.expect(pm.response.json().status).to.eql(400);",
+                  "    pm.expect(pm.response.json().detail).to.include(\"must not point at this URL shortener\");",
+                  "});"
+                ]
+              }
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "4. Expiration",
+      "item": [
+        {
+          "name": "Create link expiring in 2s",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/urls",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "urls"
+              ]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"long_url\": \"https://example.com/flash-sale\",\n  \"custom_alias\": \"{{expAlias}}\",\n  \"expiration_date\": \"{{expiresAt}}\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "event": [
+            {
+              "listen": "prerequest",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.collectionVariables.set(\"expAlias\", \"exp-\" + Date.now().toString(36));",
+                  "pm.collectionVariables.set(\"expiresAt\", new Date(Date.now() + 2000).toISOString());"
+                ]
+              }
+            },
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"status is 201\", () => pm.response.to.have.status(201));",
+                  "pm.test(\"expiration_date is stored\", () => pm.expect(pm.response.json().expiration_date).to.not.be.null);"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Before expiry -> 302",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/{{expAlias}}",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "{{expAlias}}"
+              ]
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"302 while still valid (and now cached with a TTL <= 2s)\", () => pm.response.to.have.status(302));"
+                ]
+              }
+            }
+          ],
+          "protocolProfileBehavior": {
+            "followRedirects": false
+          }
+        },
+        {
+          "name": "After expiry -> 410 Gone",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/{{expAlias}}",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "{{expAlias}}"
+              ]
+            }
+          },
+          "event": [
+            {
+              "listen": "prerequest",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "// Wait past the expiration; the cache TTL was capped to the link lifetime, so Redis has dropped it too.",
+                  "setTimeout(() => {}, 3000);"
+                ]
+              }
+            },
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"status is 410\", () => pm.response.to.have.status(410));",
+                  "pm.test(\"body is an RFC 9457 ProblemDetail\", () => {",
+                  "    pm.expect(pm.response.headers.get(\"Content-Type\")).to.include(\"application/problem+json\");",
+                  "    pm.expect(pm.response.json().status).to.eql(410);",
+                  "    pm.expect(pm.response.json().detail).to.include(\"expired\");",
+                  "});"
+                ]
+              }
+            }
+          ],
+          "protocolProfileBehavior": {
+            "followRedirects": false
+          }
+        },
+        {
+          "name": "Metadata of expired link",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/urls/{{expAlias}}",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "urls",
+                "{{expAlias}}"
+              ]
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"metadata still readable, flagged expired\", () => {",
+                  "    pm.response.to.have.status(200);",
+                  "    pm.expect(pm.response.json().expired).to.be.true;",
+                  "});"
+                ]
+              }
+            }
+          ]
+        }
+      ]
+    }
+  ],
+  "variable": [
+    {
+      "key": "shortCode",
+      "value": ""
+    },
+    {
+      "key": "alias",
+      "value": ""
+    },
+    {
+      "key": "expAlias",
+      "value": ""
+    },
+    {
+      "key": "expiresAt",
+      "value": ""
+    }
+  ]
+}

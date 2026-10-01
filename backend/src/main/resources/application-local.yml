@@ -1,0 +1,8 @@
+# LocalStack stands in for AWS. Any credentials work against LocalStack.
+spring:
+  cloud:
+    aws:
+      endpoint: ${AWS_ENDPOINT:http://localhost:4567}
+      credentials:
+        access-key: test
+        secret-key: test

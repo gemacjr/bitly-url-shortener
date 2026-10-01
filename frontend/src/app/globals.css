@@ -1,0 +1,64 @@
+@import "tailwindcss";
+
+:root {
+  color-scheme: light dark; /* native controls (date picker icon) follow the theme */
+  --background: #fbfaf7;
+  --foreground: #1c1917;
+  --surface: #ffffff;
+  --surface-2: #f3f1ec;
+  --line: #e4e0d8;
+  --muted: #6b645c;
+  --accent: #e0531f;
+  --accent-fg: #ffffff;
+  --danger: #c2261d;
+}
+
+@media (prefers-color-scheme: dark) {
+  :root {
+    --background: #121110;
+    --foreground: #f2efea;
+    --surface: #1b1a18;
+    --surface-2: #262421;
+    --line: #34312d;
+    --muted: #a39b91;
+    --accent: #ff7a45;
+    --accent-fg: #1a0b04;
+    --danger: #ff6b61;
+  }
+}
+
+@theme inline {
+  --color-background: var(--background);
+  --color-foreground: var(--foreground);
+  --color-surface: var(--surface);
+  --color-surface-2: var(--surface-2);
+  --color-line: var(--line);
+  --color-muted: var(--muted);
+  --color-accent: var(--accent);
+  --color-accent-fg: var(--accent-fg);
+  --color-danger: var(--danger);
+  --font-sans: var(--font-geist-sans);
+  --font-mono: var(--font-geist-mono);
+}
+
+body {
+  background: var(--background);
+  color: var(--foreground);
+}
+
+@utility field {
+  border-radius: 0.75rem;
+  border: 1px solid var(--line);
+  background: var(--background);
+  padding: 0.75rem 1rem;
+  outline: none;
+  transition: border-color 150ms, box-shadow 150ms;
+
+  &:focus {
+    border-color: var(--accent);
+    box-shadow: 0 0 0 3px color-mix(in oklab, var(--accent) 25%, transparent);
+  }
+  &[aria-invalid="true"] {
+    border-color: var(--danger);
+  }
+}

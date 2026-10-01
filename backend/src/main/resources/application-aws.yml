@@ -1,0 +1,11 @@
+# Real AWS: no endpoint override, credentials from the default provider chain (IAM role / env / SSO).
+# The table is provisioned by infrastructure-as-code, so the app never creates it.
+app:
+  base-url: ${BASE_URL}
+  dynamodb:
+    auto-create-table: false
+spring:
+  data:
+    redis:
+      ssl:
+        enabled: ${REDIS_SSL:true}

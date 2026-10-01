@@ -1,0 +1,40 @@
+server:
+  port: ${PORT:8090}
+
+spring:
+  application:
+    name: bitly
+  profiles:
+    default: local
+  threads:
+    virtual:
+      enabled: true
+  data:
+    redis:
+      host: ${REDIS_HOST:localhost}
+      port: ${REDIS_PORT:6380}
+      ssl:
+        enabled: ${REDIS_SSL:false}
+      timeout: 500ms   # a slow cache must not blow the 100ms redirect budget for long
+  cloud:
+    aws:
+      region:
+        static: ${AWS_REGION:us-east-1}
+
+management:
+  endpoints:
+    web:
+      exposure:
+        include: health,info
+
+app:
+  # Domain that short links are served from. GET {base-url}/{short_code} -> 302 to the long URL.
+  base-url: ${BASE_URL:http://localhost:8090}
+  dynamodb:
+    table-name: ${URLS_TABLE:bitly-urls}
+    auto-create-table: ${AUTO_CREATE_TABLE:true}
+  counter:
+    key: bitly:counter
+    batch-size: ${COUNTER_BATCH_SIZE:1000}
+  cache:
+    max-ttl: 24h
